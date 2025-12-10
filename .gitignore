@@ -1,0 +1,19 @@
+# Binaries
+cam
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# OS specific checks
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+
+# Go workspace
+go.work
