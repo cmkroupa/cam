@@ -8,8 +8,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var clearCmd = &cobra.Command{
-	Use:   "clear <Stack> [index]",
+var rmCmd = &cobra.Command{
+	Use:   "rm <Stack> [index]",
 	Short: "Remove a stack or a specific command from a stack",
 	Long: `Remove a stack or a specific command.
 To remove a specific command, provide the stack name and the index.
@@ -65,6 +65,6 @@ Use -a to remove ALL stacks.`,
 }
 
 func init() {
-	clearCmd.Flags().BoolP("all", "a", false, "remove all stacks")
-	rootCmd.AddCommand(clearCmd)
+	rmCmd.Flags().BoolP("all", "a", false, "remove all stacks")
+	rootCmd.AddCommand(rmCmd)
 }

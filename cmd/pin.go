@@ -9,10 +9,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var pushCmd = &cobra.Command{
-	Use:   "push <Stack> <command>",
-	Short: "Push a command to the top of a stack",
-	Long: `Push a command string to the specified stack.
+var pinCmd = &cobra.Command{
+	Use:   "pin <Stack> <command>",
+	Short: "Pin a command to the top of a stack",
+	Long: `Pin a command string to the specified stack.
 New commands are prepended to the stack (index 0).
 
 Use -p to store the command as an encrypted private command.`,
@@ -40,6 +40,6 @@ Use -p to store the command as an encrypted private command.`,
 }
 
 func init() {
-	pushCmd.Flags().BoolP("private", "p", false, "encrypt command and store as private")
-	rootCmd.AddCommand(pushCmd)
+	pinCmd.Flags().BoolP("private", "p", false, "encrypt command and store as private")
+	rootCmd.AddCommand(pinCmd)
 }

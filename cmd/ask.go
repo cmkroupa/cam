@@ -3,20 +3,22 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
+	"cam/internal/ai"
 	"cam/internal/data"
 
 	"github.com/charmbracelet/glamour"
 	"github.com/spf13/cobra"
-	"google.golang.org/genai"
 )
 
 var askCmd = &cobra.Command{
 	Use:   "ask [question]",
 	Short: "Ask Gemini anything",
-	Long: `Ask Gemini anything.
-Requires a Gemini API key to be set via 'cam config api-key <KEY>'.`,
+	Long: `Ask your local Ollama model anything.
+Requires Ollama to be installed and running.`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		question := strings.Join(args, " ")
@@ -26,51 +28,44 @@ Requires a Gemini API key to be set via 'cam config api-key <KEY>'.`,
 			return fmt.Errorf("failed to load config: %w", err)
 		}
 
-		apiKey := configStore.GetAPIKey()
-		if apiKey == "" {
-			return fmt.Errorf("API key not set. Please run 'cam config api-key <YOUR_KEY>'")
-		}
-
 		ctx := context.Background()
-		client, err := genai.NewClient(ctx, &genai.ClientConfig{
-			APIKey: apiKey,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to create Gemini client: %w", err)
-		}
 
-		model := "gemini-2.5-flash"
-		var prompt string
 		oneline, _ := cmd.Flags().GetBool("oneline")
+		withContext, _ := cmd.Flags().GetBool("context")
+
+		var contextStr string
+		if withContext {
+			contextStr = "directory tree:\n.\n" + buildFileTree(".", "", 0, 2)
+		}
+
+		var prompt strings.Builder
+		prompt.WriteString("SYSTEM: You are a concise CLI technical assistant.\n")
+		prompt.WriteString("RULES:\n")
+		prompt.WriteString("1. Keep answers short, accurate, and direct.\n")
+		prompt.WriteString("2. Avoid conversational filler (e.g. 'Here is a summary', 'I hope this helps').\n")
+		prompt.WriteString("3. Use markdown code blocks for examples.\n")
+		prompt.WriteString("\n")
+
+		if contextStr != "" {
+			prompt.WriteString(fmt.Sprintf("CONTEXT (Current Directory):\n%s\n", contextStr))
+		}
+
 		if oneline {
-			prompt = fmt.Sprintf("You are a command line expert. If the user asks how to do something in the terminal, return ONLY the command string. If the user asks a general question, return the answer as a raw string. Do NOT wrap the answer in 'echo' unless explicitly asked. Do not use markdown. Question: %s", question)
+			prompt.WriteString("Provide a single-line plain text answer. No markdown. No explanations.\n")
 		} else {
-			prompt = fmt.Sprintf("You are a command line expert. Provide a VERY CONCISE, readable answer to the following question, using markdown code blocks where appropriate: %s", question)
+			prompt.WriteString("Provide a concise explanation using markdown.\n")
 		}
 
-		resp, err := client.Models.GenerateContent(ctx, model, genai.Text(prompt), nil)
+		prompt.WriteString(fmt.Sprintf("USER QUESTION: %s", question))
+
+		resultText, err := ai.GenerateContent(ctx, configStore, prompt.String())
 		if err != nil {
-			return fmt.Errorf("failed to generate content: %w", err)
+			return err
 		}
 
-		if resp == nil {
-			return fmt.Errorf("no response from Gemini")
-		}
-
-		var resultText string
-		if len(resp.Candidates) > 0 && len(resp.Candidates[0].Content.Parts) > 0 {
-			for _, part := range resp.Candidates[0].Content.Parts {
-				if part.Text != "" {
-					resultText += part.Text
-				}
-			}
-		}
-
-		if resultText == "" {
-			return fmt.Errorf("empty response from Gemini")
-		}
-
-		if !oneline {
+		if oneline {
+			fmt.Println(strings.TrimSpace(resultText))
+		} else {
 			renderer, err := glamour.NewTermRenderer(
 				glamour.WithAutoStyle(),
 				glamour.WithWordWrap(80),
@@ -84,14 +79,60 @@ Requires a Gemini API key to be set via 'cam config api-key <KEY>'.`,
 				return fmt.Errorf("failed to render markdown: %w", err)
 			}
 			fmt.Print(out)
-		} else {
-			fmt.Println(strings.TrimSpace(resultText))
 		}
 		return nil
 	},
 }
 
 func init() {
-	askCmd.Flags().BoolP("oneline", "o", false, "Print only the command string (no markdown)")
+	askCmd.Flags().BoolP("oneline", "o", false, "Get a concise one-line answer")
+	askCmd.Flags().BoolP("context", "c", false, "Include local file context")
 	rootCmd.AddCommand(askCmd)
+}
+
+// Shared with cmdr.go (package scope)
+
+func buildFileTree(dir string, prefix string, depth int, maxDepth int) string {
+	if depth > maxDepth {
+		return ""
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+
+	var validEntries []os.DirEntry
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		if e.IsDir() && ignoredDirs[name] {
+			continue
+		}
+		validEntries = append(validEntries, e)
+	}
+
+	var sb strings.Builder
+	for i, e := range validEntries {
+		isLast := i == len(validEntries)-1
+		connector := "├── "
+		newPrefix := prefix + "│   "
+		if isLast {
+			connector = "└── "
+			newPrefix = prefix + "    "
+		}
+
+		name := e.Name()
+		if e.IsDir() {
+			name += "/"
+		}
+
+		sb.WriteString(fmt.Sprintf("%s%s%s\n", prefix, connector, name))
+
+		if e.IsDir() {
+			sb.WriteString(buildFileTree(filepath.Join(dir, e.Name()), newPrefix, depth+1, maxDepth))
+		}
+	}
+	return sb.String()
 }

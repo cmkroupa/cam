@@ -1,8 +1,6 @@
 package data
 
 import (
-	"cam/internal/crypto"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,7 +9,7 @@ import (
 )
 
 type Config struct {
-	GeminiAPIKey string `json:"gemini_api_key"`
+	OllamaModel string `json:"ollama_model"` // e.g. "llama3", "qwen2.5:1.5b"
 }
 
 type ConfigStore struct {
@@ -64,55 +62,18 @@ func (cs *ConfigStore) SaveConfig() error {
 	return os.WriteFile(cs.path, data, 0644)
 }
 
-func (cs *ConfigStore) SetAPIKey(key string) error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
-	}
-
-	keysDir := filepath.Join(home, ".config", "cam", ".keys")
-	if err := crypto.EnsureKeysExists(keysDir); err != nil {
-		return fmt.Errorf("failed to ensure keys exist: %w", err)
-	}
-
-	pubKeyPath := filepath.Join(keysDir, "public_key.pem")
-	encryptedBytes, err := crypto.Encrypt([]byte(key), pubKeyPath)
-	if err != nil {
-		return fmt.Errorf("failed to encrypt API key: %w", err)
-	}
-
-	encryptedKey := base64.StdEncoding.EncodeToString(encryptedBytes)
-
+func (cs *ConfigStore) SetOllamaModel(model string) error {
 	cs.mu.Lock()
-	cs.Config.GeminiAPIKey = encryptedKey
+	cs.Config.OllamaModel = model
 	cs.mu.Unlock()
 	return cs.SaveConfig()
 }
 
-func (cs *ConfigStore) GetAPIKey() string {
+func (cs *ConfigStore) GetOllamaModel() string {
 	cs.mu.RLock()
-	val := cs.Config.GeminiAPIKey
-	cs.mu.RUnlock()
-
-	if val == "" {
-		return ""
+	defer cs.mu.RUnlock()
+	if cs.Config.OllamaModel == "" {
+		return "qwen2.5-coder:7b"
 	}
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return val
-	}
-	privKeyPath := filepath.Join(home, ".config", "cam", ".keys", "private_key.pem")
-
-	ciphertext, err := base64.StdEncoding.DecodeString(val)
-	if err != nil {
-		return val
-	}
-
-	plaintext, err := crypto.Decrypt(ciphertext, privKeyPath)
-	if err != nil {
-		return val
-	}
-
-	return string(plaintext)
+	return cs.Config.OllamaModel
 }

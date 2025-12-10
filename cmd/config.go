@@ -13,12 +13,16 @@ var configCmd = &cobra.Command{
 	Use:   "config <key> <value>",
 	Short: "Set configuration values",
 	Long: `Set configuration values for cam.
-Currently supported keys:
-  - api-key: Set the Gemini API key.`,
-	Args: cobra.ExactArgs(2),
+Supported keys:
+  - model: Set the Ollama model (e.g. "qwen2.5", "llama3").
+    Find models at: https://ollama.com/library`,
+	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key := args[0]
-		value := args[1]
+		var value string
+		if len(args) > 1 {
+			value = args[1]
+		}
 
 		store := data.NewConfigStore()
 		if err := store.LoadConfig(); err != nil {
@@ -26,10 +30,16 @@ Currently supported keys:
 		}
 
 		switch strings.ToLower(key) {
-		case "api-key":
-			if err := store.SetAPIKey(value); err != nil {
-				return fmt.Errorf("failed to save config: %w", err)
+		case "model":
+			if value == "" || value == "-h" || value == "--help" {
+				fmt.Printf("Current model: %s\n", store.GetOllamaModel())
+				fmt.Println("Find models to use at: https://ollama.com/library")
+				return nil
 			}
+			if err := store.SetOllamaModel(value); err != nil {
+				return fmt.Errorf("failed to save model: %w", err)
+			}
+			fmt.Printf("Ollama model set to: %s\n", value)
 
 		default:
 			return fmt.Errorf("unknown configuration key: '%s'", key)
